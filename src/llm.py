@@ -57,8 +57,9 @@ def _carregar_chaves(prefixo):
 
 
 class LLM:
-    def __init__(self, provider="gemini", model=None):
+    def __init__(self, provider="gemini", model=None, max_output_tokens=MAX_OUTPUT_TOKENS):
         self.provider = provider
+        self.max_output_tokens = max_output_tokens
         self._i = 0
         self._uso = {"chamadas": 0, "prompt_tokens": 0, "output_tokens": 0, "total_tokens": 0}
 
@@ -132,7 +133,7 @@ class LLM:
             resp = client.models.generate_content(
                 model=modelo,
                 contents=[conteudo],
-                config={"max_output_tokens": MAX_OUTPUT_TOKENS, "temperature": TEMPERATURE},
+                config={"max_output_tokens": self.max_output_tokens, "temperature": TEMPERATURE},
             )
             pt, ot = self._uso_gemini(resp)
             return resp.text.strip(), pt, ot
@@ -145,7 +146,7 @@ class LLM:
         gm = genai.GenerativeModel(modelo)
         resp = gm.generate_content(
             [conteudo],
-            generation_config={"temperature": TEMPERATURE, "max_output_tokens": MAX_OUTPUT_TOKENS},
+            generation_config={"temperature": TEMPERATURE, "max_output_tokens": self.max_output_tokens},
         )
         pt, ot = self._uso_gemini(resp)
         return resp.text.strip(), pt, ot
@@ -171,7 +172,7 @@ class LLM:
             msgs.append({"role": "system", "content": system})
         msgs.append({"role": "user", "content": prompt})
         resp = client.chat.completions.create(
-            model=modelo, messages=msgs, temperature=TEMPERATURE, max_tokens=MAX_OUTPUT_TOKENS
+            model=modelo, messages=msgs, temperature=TEMPERATURE, max_tokens=self.max_output_tokens
         )
         u = resp.usage
         return resp.choices[0].message.content.strip(), u.prompt_tokens, u.completion_tokens

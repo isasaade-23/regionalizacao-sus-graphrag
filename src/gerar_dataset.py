@@ -62,8 +62,9 @@ Responda em JSON com a forma:
 {{"pares": [{{"pergunta": "...", "cypher": "..."}}, ...]}}"""
 
 
-def gerar(n, provider, por_chamada=8):
-    llm = LLM(provider=provider)
+def gerar(n, provider, por_chamada=5):
+    # orcamento de saida alto: cada par tem Cypher; k pares nao podem ser truncados
+    llm = LLM(provider=provider, max_output_tokens=8192)
     exemplos_txt = "\n".join(f"P: {e['pergunta']}\nC: {e['cypher']}" for e in EXEMPLOS)
     vistos = set()
     pares = []
@@ -76,7 +77,9 @@ def gerar(n, provider, por_chamada=8):
             pares.append({"pergunta": e["pergunta"], "cypher": e["cypher"], "origem": "semente"})
 
     i = 0
-    while len(pares) < n:
+    falhas_seguidas = 0
+    max_lotes = 4 * (n // por_chamada + 1)  # teto para nao girar em falso
+    while len(pares) < n and i < max_lotes and falhas_seguidas < 8:
         tema = TEMAS[i % len(TEMAS)]
         i += 1
         k = min(por_chamada, n - len(pares) + 2)
@@ -85,7 +88,9 @@ def gerar(n, provider, por_chamada=8):
         )
         try:
             obj = llm.gerar_json(prompt)
+            falhas_seguidas = 0
         except Exception as e:  # noqa: BLE001
+            falhas_seguidas += 1
             print(f"  lote {i}: falhou ({str(e)[:80]}), seguindo")
             continue
         novos = 0
