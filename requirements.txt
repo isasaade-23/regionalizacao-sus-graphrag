@@ -9,6 +9,7 @@ neo4j>=5.14
 
 # --- LLM / GraphRAG ---
 google-generativeai>=0.8
+openai>=1.30          # cliente do baseline Groq (API compativel OpenAI)
 python-dotenv>=1.0
 pyyaml>=6.0
 

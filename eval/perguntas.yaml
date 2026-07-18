@@ -1,0 +1,73 @@
+# Conjunto de avaliacao do Text2Cypher.
+# Cada item: pergunta em portugues + Cypher de referencia (gabarito).
+# src/avaliar.py mede: (1) validade do Cypher gerado (EXPLAIN no Neo4j) e
+# (2) acerto de execucao (mesmo resultado que o Cypher de referencia).
+# Referencias que dependem de nomes de regiao usam nomes que existem no grafo.
+
+- pergunta: "Quais regioes de saude mais enviam pacientes de cancer para fora?"
+  cypher: >
+    MATCH (o:RegiaoSaude)-[f:FLUXO]->(:RegiaoSaude)
+    WHERE f.deslocou = true
+    RETURN o.nome AS regiao, sum(f.volume) AS evasao
+    ORDER BY evasao DESC LIMIT 10
+
+- pergunta: "Qual polo mais recebe pacientes de fora para radioterapia?"
+  cypher: >
+    MATCH (:RegiaoSaude)-[f:FLUXO]->(d:RegiaoSaude)
+    WHERE f.deslocou = true AND f.linha = 'radioterapia'
+    RETURN d.nome AS polo, sum(f.volume) AS invasao
+    ORDER BY invasao DESC LIMIT 5
+
+- pergunta: "Quantos atendimentos de quimioterapia cada regiao reteve em 2024?"
+  cypher: >
+    MATCH (o:RegiaoSaude)-[f:FLUXO]->(o)
+    WHERE f.linha = 'quimioterapia' AND f.ano = 2024 AND f.deslocou = false
+    RETURN o.nome AS regiao, sum(f.volume) AS retido
+    ORDER BY retido DESC
+
+- pergunta: "Liste os 10 municipios mais distantes do seu polo regional."
+  cypher: >
+    MATCH (m:Municipio)
+    RETURN m.nome AS municipio, m.dist_polo_km AS distancia
+    ORDER BY distancia DESC LIMIT 10
+
+- pergunta: "Quais regioes sao polos oncologicos?"
+  cypher: >
+    MATCH (r:RegiaoSaude)
+    WHERE r.polo_oncologico = true
+    RETURN r.nome AS polo
+    ORDER BY polo
+
+- pergunta: "Qual o volume total de deslocamento inter-regional por ano?"
+  cypher: >
+    MATCH (:RegiaoSaude)-[f:FLUXO]->(:RegiaoSaude)
+    WHERE f.deslocou = true
+    RETURN f.ano AS ano, sum(f.volume) AS deslocamento
+    ORDER BY ano
+
+- pergunta: "Quantos municipios existem em cada regiao de saude?"
+  cypher: >
+    MATCH (m:Municipio)-[:PERTENCE_A]->(r:RegiaoSaude)
+    RETURN r.nome AS regiao, count(m) AS n_municipios
+    ORDER BY n_municipios DESC
+
+- pergunta: "Qual a taxa de deslocamento na alta complexidade por regiao de residencia?"
+  cypher: >
+    MATCH (o:RegiaoSaude)-[f:FLUXO]->(:RegiaoSaude)
+    WHERE f.complexidade = 'alta'
+    WITH o, sum(CASE WHEN f.deslocou = true THEN f.volume ELSE 0 END) AS fora,
+         sum(f.volume) AS total
+    RETURN o.nome AS regiao, fora * 1.0 / total AS taxa_deslocamento
+    ORDER BY taxa_deslocamento DESC
+
+- pergunta: "Quais estabelecimentos realizam radioterapia?"
+  cypher: >
+    MATCH (e:Estabelecimento)-[:REALIZA]->(:Procedimento {linha: 'radioterapia'})
+    RETURN DISTINCT e.nome AS estabelecimento
+    ORDER BY estabelecimento
+
+- pergunta: "Qual o volume de atendimentos oncologicos por linha de cuidado?"
+  cypher: >
+    MATCH (:RegiaoSaude)-[f:FLUXO]->(:RegiaoSaude)
+    RETURN f.linha AS linha, sum(f.volume) AS volume
+    ORDER BY volume DESC
