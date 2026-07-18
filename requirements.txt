@@ -1,0 +1,21 @@
+# --- Dados e extracao (DataSUS) ---
+pandas>=2.0
+pyarrow>=14.0
+pysus>=0.13
+geobr>=0.2
+
+# --- Grafo ---
+neo4j>=5.14
+
+# --- LLM / GraphRAG ---
+google-generativeai>=0.8
+python-dotenv>=1.0
+pyyaml>=6.0
+
+# --- Avaliacao ---
+scikit-learn>=1.3
+
+# NOTA: o fine-tuning QLoRA (notebooks/02_qlora_kaggle.ipynb) roda no Kaggle
+# com GPU e instala suas proprias dependencias (transformers, peft, bitsandbytes,
+# trl, datasets, accelerate) na primeira celula. Nao ficam aqui para manter o
+# ambiente local leve e sem exigir GPU.

@@ -1,0 +1,38 @@
+# --- Dados brutos e sensiveis: NUNCA versionar ---
+data/raw/
+data/processed/
+*.parquet
+*.dbc
+*.dbf
+*.csv
+
+# --- Segredos ---
+.env
+*.key
+kaggle.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# --- Modelos e adapters (grandes) ---
+*.safetensors
+*.bin
+*.gguf
+adapters/
+checkpoints/
+outputs/models/
+
+# --- Neo4j / Docker ---
+neo4j/data/
+neo4j/logs/
+neo4j/import/
+neo4j/plugins/
+
+# --- Sistema ---
+.DS_Store
+Thumbs.db
