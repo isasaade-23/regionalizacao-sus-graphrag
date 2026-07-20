@@ -82,17 +82,25 @@ O fine-tuning roda à parte, no Kaggle: abra `notebooks/02_qlora_kaggle.ipynb`, 
 
 ## Avaliação
 
-A comparação alvo é entre dois caminhos de tradução pergunta→Cypher: a API (professor) e um modelo aberto pequeno destilado com QLoRA (aluno). O harness `src/avaliar.py` mede a métrica que de fato importa — **validade** (o Cypher passa no `EXPLAIN` do Neo4j) e **acerto de execução** (rodado, retorna o mesmo resultado que o Cypher de referência) —, porque duas consultas escritas de formas diferentes podem estar as duas corretas. Essa medida exige o grafo carregado e é o passo reprodutível seguinte: `docker compose up` + `src/grafo.py` + `src/avaliar.py`.
+O harness `src/avaliar.py` mede a métrica que de fato importa em Text2Cypher — **validade** (o Cypher gerado passa no `EXPLAIN` do Neo4j) e **acerto de execução** (rodado, retorna o mesmo resultado que o Cypher de referência) —, porque duas consultas escritas de formas diferentes podem estar as duas corretas. A comparação alvo é entre um modelo aberto forte e o modelo pequeno destilado com QLoRA.
 
-**Fine-tuning (medido).** O modelo aberto **Qwen2.5-1.5B**, ajustado com LoRA sobre 1.500 pares pergunta→Cypher destilados do Gemini, foi avaliado em um conjunto de validação de 150 perguntas (split fixo, `seed=42`) por correspondência ao Cypher de referência. O treino rodou na GPU gratuita do Kaggle e exigiu várias iterações para estabilizar o ambiente (bitsandbytes/CUDA na GPU sorteada), caindo para LoRA em fp16 com o bloco QLoRA 4-bit documentado como opção.
+**Execução (medido).** Conjunto curado `eval/perguntas.yaml` (10 perguntas) contra o grafo carregado no Neo4j (`src/grafo.py`):
+
+| Modelo | Cypher válido (`EXPLAIN`) | Resposta correta (execução) | Tokens (10 q) |
+| --- | --- | --- | --- |
+| qwen2.5-coder:7b (Ollama, local, sem chave) | 100% | 50% | 10,4k |
+
+O modelo aberto local produz Cypher **sempre sintaticamente válido**; metade retorna exatamente o mesmo resultado que o gabarito. "Correto" é estrito — exige as mesmas linhas com os mesmos nomes de coluna, então vários quase-acertos (resposta certa sob outro alias, ou sem `ORDER BY`) contam como erro. A amostra carrega a camada de fluxo (região/município/`FLUXO`); a camada opcional `Estabelecimento`/`Procedimento` não é populada, o que limita 2 das 10 perguntas.
+
+**Fine-tuning (medido).** O modelo **Qwen2.5-1.5B**, ajustado com LoRA sobre 1.500 pares pergunta→Cypher destilados do Gemini, avaliado em 150 perguntas de validação (split fixo, `seed=42`) por correspondência ao Cypher de referência. O treino rodou na GPU gratuita do Kaggle e exigiu várias iterações para estabilizar o ambiente (bitsandbytes/CUDA na GPU sorteada), caindo para LoRA em fp16 com o bloco QLoRA 4-bit documentado como opção.
 
 | Modelo | Acerto exato | Acerto estrutural | n |
 | --- | --- | --- | --- |
 | Qwen2.5-1.5B + LoRA (destilado, 1.500 pares) | 6,0% | 8,7% | 150 |
 
-"Acerto estrutural" ignora nomes de variável (compara rótulos, relações, propriedades e palavras-chave). Os números são modestos e esperados para um modelo de 1,5B destilado com poucos milhares de pares: ele aprende o esquema do grafo mas ainda trunca antes de fechar `WHERE`/`RETURN`. Mais dados de destilação e trocar o alvo de string por execução são as alavancas seguintes.
+"Acerto estrutural" ignora nomes de variável. Os números são modestos e esperados para um 1,5B destilado com poucos milhares de pares: ele aprende o esquema mas ainda trunca antes de fechar `WHERE`/`RETURN`. O contraste com o modelo aberto de 7B acima mostra o efeito do tamanho; mais dados de destilação é a alavanca seguinte.
 
-**API (Gemini) — evidência qualitativa.** Nas perguntas curadas de `eval/`, o Gemini gera Cypher válido e correto, próximo do gabarito (~1k tokens por consulta). A taxa formal por execução entra na tabela assim que o grafo é carregado. A correspondência por string subestima a API, que escreve consultas corretas porém estilisticamente diferentes da referência — exatamente por isso a métrica de execução é a correta.
+**API (Gemini).** Nas perguntas curadas, o Gemini gera Cypher válido e correto, próximo do gabarito (~1k tokens/consulta); a linha formal por execução entra na tabela ao rodar `python src/avaliar.py --providers gemini` com uma chave ativa.
 
 > **Dados:** o exemplo roda sobre uma **amostra sintética representativa** (20 regiões, 127 municípios, ~2 mil arestas de fluxo, ~30% de deslocamento, retenção caindo com a complexidade). O caminho de extração do SIA/DataSUS real existe em `src/extracao.py`; a amostra mantém o repositório leve e reprodutível.
 
