@@ -11,6 +11,8 @@ uso de tokens para controlar custo.
 Provedores:
   - gemini (primario): usa GEMINI_KEY_1..N e GEMINI_MODEL
   - groq   (alternativo): usa GROQ_KEY_1..N e GROQ_MODEL (API compativel OpenAI)
+  - ollama (local): modelo aberto servido pelo Ollama, sem chave nem rate limit
+                    (OLLAMA_MODEL, OLLAMA_BASE_URL; API compativel OpenAI)
 
 Uso:
     from src.llm import LLM
@@ -63,6 +65,7 @@ class LLM:
         self._i = 0
         self._uso = {"chamadas": 0, "prompt_tokens": 0, "output_tokens": 0, "total_tokens": 0}
 
+        self.base_url = None
         if provider == "gemini":
             self.chaves = _carregar_chaves("GEMINI_KEY")
             self.model = model or os.getenv("GEMINI_MODEL", GEMINI_FALLBACKS[0])
@@ -71,6 +74,14 @@ class LLM:
             self.chaves = _carregar_chaves("GROQ_KEY")
             self.model = model or os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
             self.modelos = [self.model]
+            self.base_url = "https://api.groq.com/openai/v1"
+        elif provider == "ollama":
+            # modelo aberto servido localmente pelo Ollama; sem chave, sem rate
+            # limit. API compativel com OpenAI. Rode `ollama serve` + pull do modelo.
+            self.chaves = ["ollama"]  # placeholder: Ollama nao exige chave
+            self.model = model or os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")
+            self.modelos = [self.model]
+            self.base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
         else:
             raise ValueError(f"Provedor desconhecido: {provider}")
 
@@ -107,7 +118,7 @@ class LLM:
                 if self.provider == "gemini":
                     texto, pt, ot = self._chamar_gemini(chave, modelo, prompt, system)
                 else:
-                    texto, pt, ot = self._chamar_groq(chave, modelo, prompt, system)
+                    texto, pt, ot = self._chamar_openai_compat(chave, modelo, prompt, system)
                 self._somar_uso(pt, ot)
                 time.sleep(CALL_DELAY)
                 return texto
@@ -162,11 +173,11 @@ class LLM:
         except Exception:  # noqa: BLE001
             return None, None
 
-    # ── Groq (API compativel com OpenAI) ──
-    def _chamar_groq(self, chave, modelo, prompt, system):
+    # ── Groq / Ollama (API compativel com OpenAI) ──
+    def _chamar_openai_compat(self, chave, modelo, prompt, system):
         from openai import OpenAI
 
-        client = OpenAI(api_key=chave, base_url="https://api.groq.com/openai/v1")
+        client = OpenAI(api_key=chave, base_url=self.base_url)
         msgs = []
         if system:
             msgs.append({"role": "system", "content": system})

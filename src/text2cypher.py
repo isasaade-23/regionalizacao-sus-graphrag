@@ -1,9 +1,10 @@
 """
 text2cypher.py — GraphRAG: pergunta em portugues -> Cypher -> resposta do grafo.
 
-Tres caminhos de geracao do Cypher:
+Caminhos de geracao do Cypher:
   --provider gemini  (API, professor; padrao)
   --provider groq    (API, modelo aberto servido pela Groq)
+  --provider ollama  (modelo aberto local via Ollama; sem chave nem rate limit)
   --provider local   (modelo fine-tunado com QLoRA: base + adapter LoRA)
 
 O Cypher gerado e executado no Neo4j (config no .env). Use --no-run para so gerar.
@@ -103,7 +104,7 @@ def imprimir_tabela(linhas):
 def main():
     ap = argparse.ArgumentParser(description="GraphRAG Text2Cypher em portugues sobre o grafo do SUS")
     ap.add_argument("pergunta", help="pergunta em portugues")
-    ap.add_argument("--provider", default="gemini", choices=["gemini", "groq", "local"])
+    ap.add_argument("--provider", default="gemini", choices=["gemini", "groq", "ollama", "local"])
     ap.add_argument("--no-run", action="store_true", help="so gera o Cypher, nao executa")
     args = ap.parse_args()
 
