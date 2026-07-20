@@ -14,7 +14,8 @@ Dois modos:
               fluxo por (regiao_residencia, regiao_atendimento, ano, complexidade,
               linha). Reaproveita a mesma operacionalizacao do artigo metodologico.
 
-Saidas em data/processed/: regioes.parquet, municipios.parquet, fluxo.parquet.
+Saidas em data/processed/: regioes.parquet, municipios.parquet, fluxo.parquet e,
+no modo amostra, a camada CNES (procedimentos/estabelecimentos/realiza).
 
 Uso:
     python src/extracao.py --amostra
@@ -106,7 +107,40 @@ def gerar_amostra(seed=42):
                             reg_aten_codigo=destino, reg_aten_nome=nome_por_cod[destino],
                             ano=ano, complexidade=cplx, linha=linha, volume=v_fora, deslocou=True))
     fluxo = pd.DataFrame(linhas)
-    return regioes, municipios, fluxo
+
+    # camada CNES (oferta): procedimentos tracadores, centros de oncologia nos
+    # municipios-polo das regioes polo, e a producao (REALIZA) por ano.
+    procedimentos = pd.DataFrame([
+        {"codigo": "0304010010", "nome": "Radioterapia externa", "grupo": "0304",
+         "linha": "radioterapia", "complexidade": "alta", "cid_grupo": "C50"},
+        {"codigo": "0304020010", "nome": "Quimioterapia de neoplasia de mama", "grupo": "0304",
+         "linha": "quimioterapia", "complexidade": "alta", "cid_grupo": "C50"},
+        {"codigo": "0201010010", "nome": "Biopsia de mama", "grupo": "0201",
+         "linha": "diagnostico", "complexidade": "media", "cid_grupo": "C50"},
+        {"codigo": "0204030030", "nome": "Mamografia bilateral", "grupo": "0204",
+         "linha": "diagnostico", "complexidade": "media", "cid_grupo": "C50"},
+    ])
+
+    polo_mun = municipios[municipios["nome"].str.endswith("(polo)")].reset_index(drop=True)
+    est_rows, rea_rows = [], []
+    for i, m in polo_mun.iterrows():
+        cnes = str(2077000 + i)
+        est_rows.append({
+            "cnes": cnes,
+            "nome": f"Centro de Oncologia de {m['nome'].replace(' (polo)', '')}",
+            "tipo": "unidade de alta complexidade em oncologia",
+            "municipio_codigo": m["codigo"],
+        })
+        for _, p in procedimentos.iterrows():
+            for ano in range(2019, 2025):
+                rea_rows.append({
+                    "cnes": cnes, "procedimento_codigo": p["codigo"],
+                    "ano": ano, "volume": int(rng.integers(200, 5000)),
+                })
+    estabelecimentos = pd.DataFrame(est_rows)
+    realiza = pd.DataFrame(rea_rows)
+
+    return regioes, municipios, fluxo, procedimentos, estabelecimentos, realiza
 
 
 # ─────────────────────────────────────────────
@@ -189,16 +223,23 @@ def _preparar_bruto(df, mapa):
 
 
 # ─────────────────────────────────────────────
-def salvar(regioes, municipios, fluxo):
+def salvar(regioes, municipios, fluxo, procedimentos=None, estabelecimentos=None, realiza=None):
     PROC.mkdir(parents=True, exist_ok=True)
     if regioes is not None:
         regioes.to_parquet(PROC / "regioes.parquet", index=False)
     if municipios is not None:
         municipios.to_parquet(PROC / "municipios.parquet", index=False)
     fluxo.to_parquet(PROC / "fluxo.parquet", index=False)
+    # camada CNES opcional
+    for df, nome in [(procedimentos, "procedimentos"), (estabelecimentos, "estabelecimentos"),
+                     (realiza, "realiza")]:
+        if df is not None:
+            df.to_parquet(PROC / f"{nome}.parquet", index=False)
     print(f"Salvo em {PROC}: fluxo={len(fluxo)} arestas"
           + (f", regioes={len(regioes)}" if regioes is not None else "")
-          + (f", municipios={len(municipios)}" if municipios is not None else ""))
+          + (f", municipios={len(municipios)}" if municipios is not None else "")
+          + (f", estabelecimentos={len(estabelecimentos)}" if estabelecimentos is not None else "")
+          + (f", realiza={len(realiza)}" if realiza is not None else ""))
 
 
 def main():
@@ -210,8 +251,8 @@ def main():
     if args.amostra or not args.ano:
         if not args.amostra:
             print("Nenhum --ano informado; gerando --amostra. Use --ano AAAA para dados reais.")
-        regioes, municipios, fluxo = gerar_amostra()
-        salvar(regioes, municipios, fluxo)
+        regioes, municipios, fluxo, procedimentos, estabelecimentos, realiza = gerar_amostra()
+        salvar(regioes, municipios, fluxo, procedimentos, estabelecimentos, realiza)
     else:
         fluxo = extrair_ano(args.ano)
         # no modo real, regioes/municipios vem de features_*.py do projeto de origem;

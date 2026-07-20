@@ -11,6 +11,8 @@ uso de tokens para controlar custo.
 Provedores:
   - gemini (primario): usa GEMINI_KEY_1..N e GEMINI_MODEL
   - groq   (alternativo): usa GROQ_KEY_1..N e GROQ_MODEL (API compativel OpenAI)
+  - mistral (alternativo): usa MISTRAL_KEY_1..N e MISTRAL_MODEL (ex.: codestral-latest;
+                    especialista em codigo; API compativel OpenAI)
   - ollama (local): modelo aberto servido pelo Ollama, sem chave nem rate limit
                     (OLLAMA_MODEL, OLLAMA_BASE_URL; API compativel OpenAI)
 
@@ -31,8 +33,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Cadeia de fallback do Gemini (rotaciona no retry, como no pipeline AMR)
-GEMINI_FALLBACKS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
+# Cadeia de fallback do Gemini (rotaciona no retry, como no pipeline AMR).
+# gemini-1.5-flash foi aposentado (retorna 404) e nao entra mais na cadeia.
+GEMINI_FALLBACKS = ["gemini-2.0-flash", "gemini-2.5-flash"]
 MAX_RETRIES = 3
 RETRY_DELAY = 8       # segundos entre tentativas
 CALL_DELAY = 1        # segundos entre chamadas (rate limiting suave)
@@ -75,6 +78,11 @@ class LLM:
             self.model = model or os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
             self.modelos = [self.model]
             self.base_url = "https://api.groq.com/openai/v1"
+        elif provider == "mistral":
+            self.chaves = _carregar_chaves("MISTRAL_KEY")
+            self.model = model or os.getenv("MISTRAL_MODEL", "codestral-latest")
+            self.modelos = [self.model]
+            self.base_url = "https://api.mistral.ai/v1"
         elif provider == "ollama":
             # modelo aberto servido localmente pelo Ollama; sem chave, sem rate
             # limit. API compativel com OpenAI. Rode `ollama serve` + pull do modelo.

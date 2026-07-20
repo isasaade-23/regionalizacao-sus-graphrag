@@ -82,15 +82,19 @@ O fine-tuning roda à parte, no Kaggle: abra `notebooks/02_qlora_kaggle.ipynb`, 
 
 ## Avaliação
 
-O harness `src/avaliar.py` mede a métrica que de fato importa em Text2Cypher — **validade** (o Cypher gerado passa no `EXPLAIN` do Neo4j) e **acerto de execução** (rodado, retorna o mesmo resultado que o Cypher de referência) —, porque duas consultas escritas de formas diferentes podem estar as duas corretas. A comparação alvo é entre um modelo aberto forte e o modelo pequeno destilado com QLoRA.
+O harness `src/avaliar.py` mede a métrica que de fato importa em Text2Cypher — **validade** (o Cypher gerado passa no `EXPLAIN` do Neo4j) e **acerto de execução** (rodado, retorna o mesmo resultado que o Cypher de referência) —, porque duas consultas escritas de formas diferentes podem estar as duas corretas.
 
-**Execução (medido).** Conjunto curado `eval/perguntas.yaml` (10 perguntas) contra o grafo carregado no Neo4j (`src/grafo.py`):
+**Execução (medido).** Cada provedor gera o Cypher, validado no `EXPLAIN` e executado contra o grafo (Neo4j Aura), no conjunto curado `eval/perguntas.yaml` (10 perguntas):
 
 | Modelo | Cypher válido (`EXPLAIN`) | Resposta correta (execução) | Tokens (10 q) |
 | --- | --- | --- | --- |
+| Mistral Codestral (API) | 100% | 60% | 10,2k |
 | qwen2.5-coder:7b (Ollama, local, sem chave) | 100% | 50% | 10,4k |
+| Gemini 2.0 Flash (API) | 70% † | 60% | 6,8k |
 
-O modelo aberto local produz Cypher **sempre sintaticamente válido**; metade retorna exatamente o mesmo resultado que o gabarito. "Correto" é estrito — exige as mesmas linhas com os mesmos nomes de coluna, então vários quase-acertos (resposta certa sob outro alias, ou sem `ORDER BY`) contam como erro. A amostra carrega a camada de fluxo (região/município/`FLUXO`); a camada opcional `Estabelecimento`/`Procedimento` não é populada, o que limita 2 das 10 perguntas.
+O especialista em código (Codestral) e o modelo aberto local de 7B produzem Cypher **sempre sintaticamente válido**; a diferença aparece no acerto de execução. "Correto" é estrito — exige as mesmas linhas com os mesmos nomes de coluna, então vários quase-acertos (resposta certa sob outro alias, ou sem `ORDER BY`) contam como erro, o que torna 50–60% um piso.
+
+† O Gemini respondeu 7 das 10 perguntas antes de esgotar a cota do free tier (dessas, 6 corretas); as 3 falhas são limite de API, não do modelo.
 
 **Fine-tuning (medido).** O modelo **Qwen2.5-1.5B**, ajustado com LoRA sobre 1.500 pares pergunta→Cypher destilados do Gemini, avaliado em 150 perguntas de validação (split fixo, `seed=42`) por correspondência ao Cypher de referência. O treino rodou na GPU gratuita do Kaggle e exigiu várias iterações para estabilizar o ambiente (bitsandbytes/CUDA na GPU sorteada), caindo para LoRA em fp16 com o bloco QLoRA 4-bit documentado como opção.
 
@@ -98,9 +102,7 @@ O modelo aberto local produz Cypher **sempre sintaticamente válido**; metade re
 | --- | --- | --- | --- |
 | Qwen2.5-1.5B + LoRA (destilado, 1.500 pares) | 6,0% | 8,7% | 150 |
 
-"Acerto estrutural" ignora nomes de variável. Os números são modestos e esperados para um 1,5B destilado com poucos milhares de pares: ele aprende o esquema mas ainda trunca antes de fechar `WHERE`/`RETURN`. O contraste com o modelo aberto de 7B acima mostra o efeito do tamanho; mais dados de destilação é a alavanca seguinte.
-
-**API (Gemini).** Nas perguntas curadas, o Gemini gera Cypher válido e correto, próximo do gabarito (~1k tokens/consulta); a linha formal por execução entra na tabela ao rodar `python src/avaliar.py --providers gemini` com uma chave ativa.
+"Acerto estrutural" ignora nomes de variável. Os números são modestos e esperados para um 1,5B destilado com poucos milhares de pares: ele aprende o esquema mas ainda trunca antes de fechar `WHERE`/`RETURN`. O contraste com os modelos de 7B+ acima mostra o efeito do tamanho; mais dados de destilação é a alavanca seguinte.
 
 > **Dados:** o exemplo roda sobre uma **amostra sintética representativa** (20 regiões, 127 municípios, ~2 mil arestas de fluxo, ~30% de deslocamento, retenção caindo com a complexidade). O caminho de extração do SIA/DataSUS real existe em `src/extracao.py`; a amostra mantém o repositório leve e reprodutível.
 
