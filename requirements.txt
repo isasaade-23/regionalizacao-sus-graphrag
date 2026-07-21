@@ -13,6 +13,10 @@ openai>=1.30          # cliente do baseline Groq (API compativel OpenAI)
 python-dotenv>=1.0
 pyyaml>=6.0
 
+# --- Agente (orquestracao) ---
+langgraph>=0.2        # grafo de estados do agente: nos, arestas condicionais e
+                      # human-in-the-loop via interrupt (src/agente.py)
+
 # --- Avaliacao ---
 scikit-learn>=1.3
 

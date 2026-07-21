@@ -12,6 +12,7 @@ O repositório modela o deslocamento de pacientes entre municípios e regiões d
 | **LLM + Grafos de Conhecimento** | `src/grafo.py` + `docker-compose.yml` (Neo4j) — carga do fluxo assistencial como grafo |
 | **NLP em português** | `src/text2cypher.py` — pergunta em português → Cypher → resposta |
 | **MLOps e avaliação de modelos** | `src/avaliar.py` + `docker-compose.yml` — validade e acerto do Cypher; ambiente reprodutível |
+| **Agentes / orquestração** | `src/agente.py` — agente LangGraph com auto-correção, timeout e human-in-the-loop |
 
 ## Arquitetura
 
@@ -40,6 +41,55 @@ flowchart LR
 
 O caminho de consulta (topo) traduz a pergunta em Cypher por um dos três provedores, executa no Neo4j e devolve a resposta. A preparação (offline) carrega o grafo a partir do SIA e destila o dataset que treina o modelo aberto com QLoRA. `avaliar.py` fecha o ciclo de MLOps comparando os provedores no mesmo conjunto.
 
+## Agente (GraphRAG agêntico)
+
+`src/text2cypher.py` faz o caminho de disparo único: pergunta → um Cypher → resposta. Em dados de saúde isso é frágil — se o modelo erra o Cypher, a consulta simplesmente falha, e nada garante revisão antes de rodar. `src/agente.py` envolve o mesmo Text2Cypher num **agente de estados (LangGraph)** com quatro capacidades que o disparo único não tem:
+
+- **Auto-correção** — se o Cypher falha no `EXPLAIN` (ou na execução), a mensagem de erro do Neo4j volta ao prompt e o modelo gera de novo, até `--max-tentativas`.
+- **Timeout por passo** — cada execução no Neo4j tem limite de tempo, para não travar em consulta pesada ou modelo local lento.
+- **Human-in-the-loop** — antes de executar, um gate pausa o grafo (`interrupt` do LangGraph) e pede **aprovar / editar / rejeitar** o Cypher. Nada roda sem revisão (`--auto` desliga o gate).
+- **Síntese** — as linhas do grafo viram uma resposta em português: o *generation* que fecha o ciclo do RAG.
+
+```mermaid
+stateDiagram-v2
+    [*] --> gerar
+    gerar --> validar
+    validar --> gate: EXPLAIN ok
+    validar --> gerar: inválido (realimenta o erro)
+    validar --> falha: esgotou tentativas
+    gate --> executar: aprovar
+    gate --> rejeitado: rejeitar
+    executar --> sintetizar: ok
+    executar --> gerar: erro em runtime
+    executar --> falha: esgotou tentativas
+    sintetizar --> [*]
+    rejeitado --> [*]
+    falha --> [*]
+```
+
+Reaproveita `montar_prompt`/`LLM` (geração), o `EXPLAIN` (validação) e a execução no Neo4j dos módulos existentes; o que `agente.py` acrescenta é a orquestração — nós, arestas condicionais, estado e o `interrupt`.
+
+```
+python src/agente.py "Quais regiões de saúde mais enviam pacientes de câncer para fora?" --provider ollama --auto
+```
+
+```
+Cypher     : MATCH (o:RegiaoSaude)-[f:FLUXO]->(:RegiaoSaude) WHERE f.deslocou = true
+             RETURN o.nome AS regiao, sum(f.volume) AS evasao ORDER BY evasao DESC LIMIT 10
+Tentativas : 1   Status: ok
+
+regiao                | evasao
+----------------------+-------
+Aracatuba Oeste       | 12866
+Aracatuba             | 12714
+...
+
+Resposta: As regiões que mais enviam pacientes de câncer para fora são Araçatuba Oeste,
+Araçatuba e Araçatuba Leste, seguidas de Registro e Sorocaba.
+```
+
+Sem `--auto`, o agente pausa e mostra o Cypher para revisão antes de executá-lo — o revisor pode aprovar, reescrever ou rejeitar.
+
 ## Domínio
 
 O SUS se organiza em regiões de saúde. Quando residência e local de atendimento pertencem a regiões distintas, há **deslocamento inter-regional**. O câncer serve como condição traçadora: depende de alta complexidade, concentra-se em polos estaduais e tem bom registro na Autorização de Procedimentos de Alta Complexidade (APAC). O grafo torna esse fluxo consultável: quais regiões evadem, quais polos concentram a atração, por complexidade e por linha de cuidado.
@@ -55,6 +105,7 @@ Recorte do exemplo: estado de São Paulo, SIA/SUS 2019 a 2024, dados públicos.
 │   ├── extracao.py          # DataSUS (SIA) -> tabela de fluxo
 │   ├── grafo.py             # tabela de fluxo -> Neo4j
 │   ├── text2cypher.py       # pergunta PT -> Cypher -> resposta (API e modelo local)
+│   ├── agente.py            # agente LangGraph: auto-correção + HITL + síntese
 │   ├── gerar_dataset.py     # dataset sintético pergunta->Cypher via Gemini (destilação)
 │   └── avaliar.py           # validade e acerto do Cypher gerado
 ├── notebooks/
@@ -75,6 +126,7 @@ pip install -r requirements.txt
 python src/extracao.py      # baixa e prepara o fluxo (SIA/SP)
 python src/grafo.py         # carrega o grafo no Neo4j
 python src/text2cypher.py "Quais regiões de saúde mais enviam pacientes de câncer para fora?"
+python src/agente.py "..." --provider ollama   # mesma pergunta, com auto-correção + HITL
 python src/avaliar.py       # roda o conjunto de avaliação
 ```
 
